@@ -1,0 +1,70 @@
+import numpy as np
+import tensorflow as tf
+import matplotlib.pyplot as plt
+from tensorflow.examples.tutorials.mnist import input_data
+print ("下载中......")
+#指定当前相对路径下载examples文件
+mnist = input_data.read_data_sets('data/', one_hot=True)
+
+# Batch数据
+print ("Batch Learning? ")
+batch_size = 100
+batch_xs, batch_ys = mnist.train.next_batch(batch_size)
+print ("Batch数据 %s" % (type(batch_xs)))
+print ("Batch标签 %s" % (type(batch_ys)))
+print ("Batch数据的shape %s" % (batch_xs.shape,))
+print ("Batch标签的shape %s" % (batch_ys.shape,))
+
+神经网络工作流程
+通过TensorFlow加载进来的Mnist数据集已经制作成一个个batch数据，所以直接拿过来用就可以。
+最终的结果就是分类任务，可以得到当前输入属于每一个类别的概率值，需要动手完成的就是中间的网络结构部分。
+网络结构定义如图18-6所示，首先定义一个简单的只有一层隐藏层的神经网络，需要两组权重参数分别连接输入数据与隐藏层和隐藏层与输出结果，
+其中输入数据已经给定784个像素点（28×28×1），输出结果也是固定的10个类别，只需确定隐藏层神经元个数，就可以搭建网络模型。
+按照任务要求，设置一些网络参数，包括输入数据的规模、输出结果规模、隐藏层神经元个数以及迭代次数与batchsize大小：
+代码：
+from tensorflow.examples.tutorials.mnist import input_data
+import tensorflow as tf
+mnist = input_data.read_data_sets('data/', one_hot=True)
+numClasses = 10
+inputSize = 784 
+numHiddenUnits = 50 
+trainingIterations = 10000 
+batchSize = 100 
+numClasses固定成10，表示所有数据都是用于完成这个十分类任务。隐藏层神经元个数可以自由设置，在实际操作过程中，大家也可以动手调节其大小，以观察结果的变化，对于Mnist数据集来说，64个就足够了。
+X=tf.placeholder(tf.float32, shape=[None,inputSize])
+y=tf.placeholder(tf.float32, shape=[None,numClasses])
+参数shape表示数据规模，其中的None表示不限制batch的大小，一次可以迭代多个数据，inputSize已经指定成784，表示每个输入数据大小都是一模一样的，
+这也是训练神经网络的基本前提，输入数据大小必须一致。对于输出结果Y来说也是一样。
+接下来就是参数初始化，按照图18-6所示网络结构，首先，输入数据和中间隐层之间有联系，通过W1和B1完成计算；隐藏层又和输出层之间有联系，通过W2和B2完成计算。
+W1 = tf.Variable(tf.truncated_normal([inputSize,numHiddenUnits],stddev=0.1))
+B1 = tf.Variable(tf.constant(0.1), [numHiddenUnits])
+W2 = tf.Variable(tf.truncated_normal([numHiddenUnits,numclasses],stddev=0.1))
+B2 = tf.Variable(tf.constant(0.1), [numClasses])
+这里对权重参数使用随机高斯初始化，并且控制其值在较小范围进行浮动，用tf.truncated_normal函数对随机结果进行限制。
+hiddenLayerOutput = tf.matmul(X, W1) + B1
+hiddenLayerOutput = tf.nn.relu(hiddenLayerOutput)
+finalOutput = tf.matmul(hiddenLayerOutput,W2) + B2
+定义好权重参数后，从前到后进行计算即可，也就是由输入数据经过一步步变换得到输出结果，
+这里需要注意的是，不要忘记加入激活函数，通常每一个带有参数的网络层后面都需要加上激活函数。
+loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels = y, logits = finalOutput))
+opt = tf.train.GradientDescentOptimizer(learning_rate=0.1).minimize(loss)
+接下来就是指定损失函数，再由优化器计算梯度进行更新，这回要做的是分类任务，用对数损失函数计算损失。
+correct_prediction = tf.equal(tf.argmax(finalOutput,1), tf.argmax(y,1))
+accuracy = tf.reduce_mean(tf.cast(correct_prediction, "float"))
+对于分类任务，只展示损失不太直观，还可以测试一下当前的准确率，先定义好计算方法，也就是看预测值中概率最大的位置和标签中概率最大的位置是否一致即可。
+sess = tf.Session()
+init = tf.global_variables_initializer()
+sess.run(init)
+
+for i in range(trainingIterations):
+   batch = mnist.train.next_batch(batchSize)
+   batchInput = batch[0]
+   batchLabels = batch[1]
+   _, trainingLoss = sess.run([opt, loss], feed_dict={X: batchInput, y: batchLabels})
+   if i%1000 == 0:
+     trainAccuracy = accuracy.eval(session=sess, feed_dict={X: batchInput, y: batchLabels}
+     print ("step %d, training accuracy %g"%(i, trainAccuracy))
+testInputs = mnist.test.images
+testLabels = mnist.test.labels
+acc = accuracy.eval(session=sess, feed_dict = {X: testInputs, y: testLabels})
+print("testing accuracy: {}".format(acc))
