@@ -1,0 +1,80 @@
+from tensorflow.examples.tutorials.mnist import input_data
+import tensorflow as tf
+mnist = input_data.read_data_sets("data/", one_hot=True)
+sess = tf.InteractiveSession()
+
+#权重和偏置的初始化函数
+def weight_variable(shape):
+  initial = tf.truncated_normal(shape,stddev = 0.1)
+  return tf.Variable(initial)
+  
+def bias_variable(shape):
+  initial = tf.constant(0.1,shape=shape)
+  return tf.Variable(initial)
+  
+#卷积层的自定义函数
+def conv2d(x,W):
+  return tf.nn.conv2d(x,W,strides=[1,1,1,1],padding='SAME')
+#参数中x是输入，W是卷积的参数，比如[5,5,1,32]:前面两个数表示卷积核的尺寸，第三个数字表示有多少个channel，最后一个数字表示卷积核的数量，即表示会提取多少特征。
+strides代表卷积核模板移动的步长，都是1表示会不遗漏地划过图片的每一个点。
+padding代表边界的处理方式，SAME表示边界加上padding让卷积核的输入输出保持同样的尺寸
+
+#池化层自定义函数
+def max_pool_2x2(x):
+  return tf.nn.max_pool(x, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME')
+#在池化层中，还需要指定ksize，也就是一次选择的区域大小，与卷积核参数类似，只不过这里没有参数计算。
+[1,2,2,1]与步长的参数含义一致，分别表示在batchsize,h,w,c上的区域选择，通常batchsize和通道（特征图）上都为1，
+只需要改变中间的[2,2]来控制池化层结果，这里选择ksize和stride都为2，相当于长和宽各压缩到原来的一半。
+
+#先定义输入的placeholder，x是特征，y是真实的label，因为卷积神经网络会利用到空间结构信息，因此需要将1D的输入量转为2D的图片结构，即从1x784的形式转换为28x28
+x = tf.placeholder(tf.float32,[None,784])
+y = tf.placeholder(tf.float32,[None,10])
+x_image = tf.reshape(x,[-1,28,28,1])
+
+#接下来定义第一个卷积层
+W_conv1 = weight_variable([5,5,1,32])
+b_conv1 = bias_variable([32])
+h_conv1 = tf.nn.relu(conv2d(x_image, W_conv1) + b_conv1)
+h_pool1 = max_pool_2x2(h_conv1)
+
+#定义第二个卷积层，同时卷积核的数量变为64个，即这一层卷积会提取64个特征
+W_conv2 = weight_variable([5,5,32,64])
+b_conv2 = bias_variable([64])
+h_conv2 = tf.nn.relu(conv2d(h_pool1, W_conv2) + b_conv2)
+h_pool2 = max_pool_2x2(h_conv2)
+#由于前面经历了两次2x2的池化操作，图片尺寸由28x28变为7x7，输出的tensor尺寸即为7x7x64
+
+#使用tf.reshape函数对第二个卷积层的输出tensor进行变形，转换为ID的向量，然后连接一个全连接层，隐含节点为1024，并使用relu激活函数。
+W_fc1 = weight_variable([7*7*64, 1024])
+b_fc1 = bias_variable([1024])
+h_pool2_flat = tf.reshape(h_pool2,[-1,7*7*64])
+h_fc1 = tf.nn.relu(tf.matmul(h_pool2_flat,W_fc1)+b_fc1)
+
+#为减轻过拟合，下面使用一个Dropout层，Dropout是通过一个placeholder传入keep_prob比率来控制。在训练时，随机丢掉一部分节点的数据来减轻过拟合。
+keep_prob = tf.placeholder(tf.float32)
+h_fc1_drop = tf.nn.droppout(h_fc1, keep_prob)
+
+#最后将Dropuot层的输出连接一个softmax层，得到最后的概率输出
+W_fc2 = weight_variable([1024,10])
+b_fc2 = bias_variable([10])
+y_conv = tf.nn.softmax(tf.matmul(W_fc2,h_fc1_drop)+b_fc2)
+
+#定义损失函数为 cross entropy，同时使用优化器Adam，并给予一个比较小的优化器learning rate
+cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels = y_, logits = y_conv))
+trainStep = tf.train.AdamOptimizer().minimize(cross_entropy)
+
+#继续定义测评准确率
+correct_prediction = tf.equal(tf.argmax(y_conv,1),tf.argmax(y_,1))
+accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+
+#下面开始训练模型，首先依然是初始化参数，设置训练时Dropout的keep_prob比率为0.5，然后使用大小为50的mini-batch，共进行20000次训练
+sess.run(tf.global_variables_initializer())
+batchSize = 50
+for i in range(20000):
+  batch = mnist.train.next_batch(batchSize)
+  trainingInputs = batch[0].reshape([batchSize,28,28,1])
+  trainingLabels = batch[1]
+  if i%100 == 0:
+    trainAccuracy = accuracy.eval(session=sess, feed_dict={x:trainingInputs, y_: trainingLabels, keep_prob: 0.5})
+    print ("step %d, training accuracy %g"%(i, trainAccuracy))
+  trainStep.run(session=sess, feed_dict={x: trainingInputs, y_: trainingLabels, keep_prob: 0.5})
